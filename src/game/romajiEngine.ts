@@ -1,6 +1,5 @@
 // Romaji state machine for hiragana input
 
-// Map of hiragana to all accepted romaji patterns
 const ROMAJI_MAP: Record<string, string[]> = {
   'あ': ['a'], 'い': ['i'], 'う': ['u'], 'え': ['e'], 'お': ['o'],
   'か': ['ka'], 'き': ['ki'], 'く': ['ku'], 'け': ['ke'], 'こ': ['ko'],
@@ -11,7 +10,7 @@ const ROMAJI_MAP: Record<string, string[]> = {
   'ま': ['ma'], 'み': ['mi'], 'む': ['mu'], 'め': ['me'], 'も': ['mo'],
   'や': ['ya'], 'ゆ': ['yu'], 'よ': ['yo'],
   'ら': ['ra'], 'り': ['ri'], 'る': ['ru'], 'れ': ['re'], 'ろ': ['ro'],
-  'わ': ['wa'], 'を': ['wo'], 'ん': ['nn', 'n'],
+  'わ': ['wa'], 'を': ['wo'], 'ん': ['nn'],
   'が': ['ga'], 'ぎ': ['gi'], 'ぐ': ['gu'], 'げ': ['ge'], 'ご': ['go'],
   'ざ': ['za'], 'じ': ['zi', 'ji'], 'ず': ['zu'], 'ぜ': ['ze'], 'ぞ': ['zo'],
   'だ': ['da'], 'ぢ': ['di'], 'づ': ['du', 'zu'], 'で': ['de'], 'ど': ['do'],
@@ -32,18 +31,8 @@ const ROMAJI_MAP: Record<string, string[]> = {
   'ー': ['-'],
 };
 
-// Check if char is a small ya/yu/yo
 function isSmallKana(c: string): boolean {
   return 'ゃゅょ'.includes(c);
-}
-
-// Check if 'n' can be accepted as single for ん
-function canSingleN(nextChar: string | undefined): boolean {
-  if (!nextChar) return false; // end of text needs nn
-  const vowels = 'あいうえおやゆよなにぬねの';
-  // If next char starts a combo that begins with a/i/u/e/o/y/n, need nn
-  if (vowels.includes(nextChar)) return false;
-  return true;
 }
 
 export interface RomajiChar {
@@ -51,7 +40,11 @@ export interface RomajiChar {
   acceptedRomaji: string[];
 }
 
-// Parse hiragana text into romaji char units
+// ん の表示用ローマ字は常に 'n' 1文字
+export function getDisplayChar(c: RomajiChar): string {
+  return c.hiragana === 'ん' ? 'n' : c.acceptedRomaji[0];
+}
+
 export function parseHiragana(text: string): RomajiChar[] {
   const result: RomajiChar[] = [];
   let i = 0;
@@ -59,15 +52,13 @@ export function parseHiragana(text: string): RomajiChar[] {
     const char = text[i];
     const nextChar = i + 1 < text.length ? text[i + 1] : undefined;
 
-    // っ (sokuon/geminate)
+    // っ (sokuon)
     if (char === 'っ') {
-      // Look ahead for the next consonant
       const nextUnit = peekNextUnit(text, i + 1);
       if (nextUnit) {
         const firstConsonants = nextUnit.acceptedRomaji.map(r => r[0]);
         const uniqueConsonants = [...new Set(firstConsonants)];
         const patterns = uniqueConsonants.map(c => c + c.toLowerCase());
-        // also allow xtu, ltu
         patterns.push('xtu', 'ltu', 'xtsu', 'ltsu');
         result.push({ hiragana: 'っ', acceptedRomaji: [...new Set(patterns)] });
       } else {
@@ -77,7 +68,7 @@ export function parseHiragana(text: string): RomajiChar[] {
       continue;
     }
 
-    // Combo kana (き + ゃ etc.)
+    // Combo kana
     if (nextChar && isSmallKana(nextChar)) {
       const combo = char + nextChar;
       if (ROMAJI_MAP[combo]) {
@@ -87,24 +78,16 @@ export function parseHiragana(text: string): RomajiChar[] {
       }
     }
 
-    // ん special handling
+    // ん — 常に ['nn'] で管理。表示は 'n'、n1打+子音でも確定
     if (char === 'ん') {
-      const following = i + 1 < text.length ? text[i + 1] : undefined;
-      if (canSingleN(following)) {
-        result.push({ hiragana: 'ん', acceptedRomaji: ['nn', 'n'] });
-      } else {
-        result.push({ hiragana: 'ん', acceptedRomaji: ['nn'] });
-      }
+      result.push({ hiragana: 'ん', acceptedRomaji: ['nn'] });
       i++;
       continue;
     }
 
-    // Normal char
     if (ROMAJI_MAP[char]) {
       result.push({ hiragana: char, acceptedRomaji: ROMAJI_MAP[char] });
     } else {
-      // Unknown char (kanji, punctuation) - skip or treat as-is
-      // For this game, segments should be in hiragana
       result.push({ hiragana: char, acceptedRomaji: [char] });
     }
     i++;
@@ -131,8 +114,7 @@ function peekNextUnit(text: string, startIndex: number): RomajiChar | null {
 export interface TypingState {
   chars: RomajiChar[];
   currentCharIndex: number;
-  currentInput: string; // partial romaji for current char
-  // For each char, which romaji patterns are still viable
+  currentInput: string;
   viablePatterns: string[];
 }
 
@@ -146,7 +128,8 @@ export function createTypingState(hiragana: string): TypingState {
   };
 }
 
-export type InputResult = 'correct' | 'complete' | 'miss';
+// 'absorb' = ん の後の余分な n を無音で無視
+export type InputResult = 'correct' | 'complete' | 'miss' | 'absorb';
 
 export function processInput(state: TypingState, key: string): { result: InputResult; state: TypingState } {
   if (state.currentCharIndex >= state.chars.length) {
@@ -154,21 +137,16 @@ export function processInput(state: TypingState, key: string): { result: InputRe
   }
 
   const newInput = state.currentInput + key;
-
-  // Check which patterns still match
   const stillViable = state.viablePatterns.filter(p => p.startsWith(newInput));
 
   if (stillViable.length === 0) {
-    // Special case for ん with single 'n': if current input is 'n' and key is a consonant
-    // that starts the next character, we should advance ん and process the key for next char
+    // ん の n1打+子音確定: currentInput が 'n'（部分一致中）のとき次の文字の子音が来たら確定
     if (state.chars[state.currentCharIndex].hiragana === 'ん' && state.currentInput === 'n') {
-      // Check if the key could start the next character
       const nextCharIndex = state.currentCharIndex + 1;
       if (nextCharIndex < state.chars.length) {
         const nextPatterns = state.chars[nextCharIndex].acceptedRomaji;
         const matchesNext = nextPatterns.some(p => p.startsWith(key));
         if (matchesNext) {
-          // Accept 'n' for ん and process key for next char
           const advancedState: TypingState = {
             ...state,
             currentCharIndex: nextCharIndex,
@@ -179,10 +157,20 @@ export function processInput(state: TypingState, key: string): { result: InputRe
         }
       }
     }
+
+    // ん が single-n で確定した直後に余分な 'n' が来ても miss にしない
+    if (
+      key === 'n' &&
+      state.currentInput === '' &&
+      state.currentCharIndex > 0 &&
+      state.chars[state.currentCharIndex - 1].hiragana === 'ん'
+    ) {
+      return { result: 'absorb', state };
+    }
+
     return { result: 'miss', state };
   }
 
-  // Check if any pattern is exactly matched
   const exactMatch = stillViable.find(p => p === newInput);
   if (exactMatch) {
     const nextIndex = state.currentCharIndex + 1;
@@ -203,20 +191,19 @@ export function processInput(state: TypingState, key: string): { result: InputRe
     };
   }
 
-  // Partial match - continue
+  // Partial match
   return {
     result: 'correct',
     state: { ...state, currentInput: newInput, viablePatterns: stillViable },
   };
 }
 
-// Get the display romaji for a segment (using first accepted pattern)
+// ん は 'n' 1文字で表示
 export function getDisplayRomaji(hiragana: string): string {
   const chars = parseHiragana(hiragana);
-  return chars.map(c => c.acceptedRomaji[0]).join('');
+  return chars.map(getDisplayChar).join('');
 }
 
-// Get total romaji length for timing calculations
 export function getRomajiLength(hiragana: string): number {
   return getDisplayRomaji(hiragana).length;
 }
