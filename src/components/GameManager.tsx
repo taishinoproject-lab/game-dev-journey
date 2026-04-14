@@ -428,7 +428,7 @@ const GameManager: React.FC = () => {
 
       // Typing input - only process single alphabetic keys
       const key = e.key.toLowerCase();
-      if (key.length !== 1 || !/[a-z\-]/.test(key)) return;
+      if (key.length !== 1 || !/[a-z-]/.test(key)) return;
 
       if (!typingState || !currentSpell) return;
 
