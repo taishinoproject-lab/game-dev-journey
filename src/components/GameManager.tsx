@@ -730,27 +730,45 @@ const GameManager: React.FC = () => {
 
           {/* 候補が絞り込まれたら全文表示 */}
           {inCandidateMode && bossCandidates.length < allSpells.length && (
-            <div className="flex flex-col items-center gap-4 mt-2">
+            <div className="flex flex-col items-center gap-6 mt-2">
               {bossCandidates.map(spell => {
-                const fullRomaji = getDisplayRomaji(spell.segments.join(''));
-                const typed = bossInputBuffer;
+                const replay = tryReplayInput(spell, bossInputBuffer);
                 return (
-                  <div key={spell.id} className="flex flex-col items-center gap-1">
-                    <span className="font-serif-jp text-sm text-foreground/50 tracking-widest">
+                  <div key={spell.id} className="flex flex-col items-center gap-1.5 px-6 py-3 rounded border border-foreground/10 bg-foreground/[0.02]">
+                    <span className="font-serif-jp text-lg text-foreground/70 tracking-widest">
                       {spell.name}
-                      <span className="font-sans-jp text-xs text-muted-foreground/40 ml-2">
+                      <span className="font-sans-jp text-sm text-muted-foreground/50 ml-2">
                         （{spell.nameReading}）
                       </span>
                     </span>
-                    <span className="font-mono-code text-lg tracking-wider">
-                      {typed && fullRomaji.startsWith(typed) ? (
-                        <>
-                          <span className="text-foreground">{typed}</span>
-                          <span className="text-muted-foreground/50">{fullRomaji.slice(typed.length)}</span>
-                        </>
-                      ) : (
-                        <span className="text-foreground/70">{fullRomaji}</span>
-                      )}
+                    <div className="font-mono-code text-xl tracking-wider flex flex-wrap gap-x-1">
+                      {spell.segments.map((seg, si) => {
+                        const segRomaji = getDisplayRomaji(seg);
+                        const isComplete = replay ? si < replay.completedSegments : false;
+                        const isCurrent = replay ? si === replay.segmentIndex : false;
+
+                        if (isComplete) {
+                          return <span key={si} className="text-primary/70">{segRomaji}</span>;
+                        }
+                        if (isCurrent && replay) {
+                          // 現在セグメント内の打ち込み済み文字数を計算
+                          let typedLen = 0;
+                          for (let ci = 0; ci < replay.typingState.currentCharIndex && ci < replay.typingState.chars.length; ci++) {
+                            typedLen += getDisplayChar(replay.typingState.chars[ci]).length;
+                          }
+                          typedLen += replay.typingState.currentInput.length;
+                          return (
+                            <span key={si}>
+                              <span className="text-foreground">{segRomaji.slice(0, typedLen)}</span>
+                              <span className="text-muted-foreground/50">{segRomaji.slice(typedLen)}</span>
+                            </span>
+                          );
+                        }
+                        return <span key={si} className="text-muted-foreground/40">{segRomaji}</span>;
+                      })}
+                    </div>
+                    <span className="font-serif-jp text-xs text-muted-foreground/30 tracking-wider">
+                      「{spell.textJp}」
                     </span>
                   </div>
                 );
