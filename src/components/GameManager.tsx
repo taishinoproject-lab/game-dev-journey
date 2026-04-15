@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GamePhase, Spell, getComboMultiplier, HighScore } from '../game/types';
-import { attackSpells, defenseSpells, getRandomAttackSpell } from '../game/spells';
-import { createTypingState, processInput, TypingState, getDisplayRomaji, getRomajiLength, getDisplayChar } from '../game/romajiEngine';
+import { attackSpells, defenseSpells, allSpells, getRandomAttackSpell } from '../game/spells';
+import {
+  createTypingState, processInput, TypingState,
+  getDisplayRomaji, getRomajiLength, getDisplayChar,
+} from '../game/romajiEngine';
 import { createNormalEnemies, createBossEnemy, getBossTimeLimit, getNormalTimeLimit } from '../game/enemies';
 import { Enemy } from '../game/types';
 import TitleScreen from './TitleScreen';
@@ -28,6 +31,50 @@ function saveHighScore(hs: HighScore) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(scores.slice(0, 10)));
 }
 
+/**
+ * inputBuffer をスペルの TypingState に沿ってリプレイし、
+ * マッチすれば現在のセグメント位置と TypingState を返す。
+ * マッチしなければ null を返す。
+ */
+function tryReplayInput(spell: Spell, inputBuffer: string): {
+  segmentIndex: number;
+  completedSegments: number;
+  typingState: TypingState;
+} | null {
+  if (!inputBuffer) {
+    return {
+      segmentIndex: 0,
+      completedSegments: 0,
+      typingState: createTypingState(spell.segments[0]),
+    };
+  }
+
+  let segmentIndex = 0;
+  let completedSegments = 0;
+  let state = createTypingState(spell.segments[0]);
+
+  for (const key of inputBuffer) {
+    const { result, state: newState } = processInput(state, key);
+
+    if (result === 'miss') return null;
+    if (result === 'absorb') continue;
+
+    state = newState;
+
+    if (result === 'complete') {
+      completedSegments++;
+      segmentIndex = completedSegments;
+      if (segmentIndex >= spell.segments.length) {
+        // 入力バッファだけで呪文が完成してしまった（通常は起きない）
+        return { segmentIndex, completedSegments, typingState: state };
+      }
+      state = createTypingState(spell.segments[segmentIndex]);
+    }
+  }
+
+  return { segmentIndex, completedSegments, typingState: state };
+}
+
 const GameManager: React.FC = () => {
   const [phase, setPhase] = useState<GamePhase>('title');
   const [wave, setWave] = useState(1);
@@ -52,8 +99,10 @@ const GameManager: React.FC = () => {
   const [damageFlash, setDamageFlash] = useState(false);
   const [bossWarning, setBossWarning] = useState(false);
   const [bossWarningCountdown, setBossWarningCountdown] = useState<number | null>(null);
-  const [selectedBossSpellIndex, setSelectedBossSpellIndex] = useState(0);
-  // castingAnimation は視覚エフェクト専用。入力はブロックしない
+  // ボス戦: キー入力による候補絞り込み
+  const [bossInputBuffer, setBossInputBuffer] = useState('');
+  const [bossCandidates, setBossCandidates] = useState<Spell[]>(allSpells);
+  // 視覚エフェクト専用（入力はブロックしない）
   const [castingAnimation, setCastingAnimation] = useState(false);
   const [castingSpellName, setCastingSpellName] = useState<string | null>(null);
   const [waveIntroText, setWaveIntroText] = useState('');
@@ -65,7 +114,6 @@ const GameManager: React.FC = () => {
   const bossAttackTimerRef = useRef<number | null>(null);
   const bossCountdownIntervalRef = useRef<number | null>(null);
   const lastTickRef = useRef(Date.now());
-  // ボス攻撃タイマーのコールバック内で currentSpell を読むためのref
   const currentSpellRef = useRef<Spell | null>(currentSpell);
   useEffect(() => { currentSpellRef.current = currentSpell; }, [currentSpell]);
 
@@ -80,6 +128,17 @@ const GameManager: React.FC = () => {
     setCombo(0);
     setDamageFlash(true);
     setTimeout(() => setDamageFlash(false), 300);
+  }, []);
+
+  /** ボス戦: 候補モードに戻す */
+  const returnToCandidateMode = useCallback(() => {
+    setCurrentSpell(null);
+    setBossInputBuffer('');
+    setBossCandidates(allSpells);
+    setCurrentSegmentIndex(0);
+    setCompletedSegments(0);
+    setTypingState(null);
+    setCurrentSpellHasMiss(false);
   }, []);
 
   // --- 通常フェーズ開始 ---
@@ -106,7 +165,7 @@ const GameManager: React.FC = () => {
     setPhase('normal');
   }, []);
 
-  // --- ボスフェーズ開始 ---
+  // --- ボスフェーズ開始（呪文は未選択・候補モードで開始） ---
   const startBossPhase = useCallback((w: number) => {
     const boss = createBossEnemy(w);
     setBossEnemy(boss);
@@ -116,13 +175,13 @@ const GameManager: React.FC = () => {
     setBossWarning(false);
     setBossWarningCountdown(null);
 
-    const spell = attackSpells[0];
-    setCurrentSpell(spell);
+    setCurrentSpell(null);
+    setBossInputBuffer('');
+    setBossCandidates(allSpells);
     setCurrentSegmentIndex(0);
     setCompletedSegments(0);
+    setTypingState(null);
     setCurrentSpellHasMiss(false);
-    setSelectedBossSpellIndex(0);
-    setTypingState(createTypingState(spell.segments[0]));
 
     const tl = getBossTimeLimit(w);
     setTimeLimit(tl);
@@ -152,10 +211,11 @@ const GameManager: React.FC = () => {
     setTotalTyped(0); setCorrectTyped(0); setEnemiesDefeated(0); setNoMissCount(0);
     setWave(1); setDamageFlash(false); setBossWarning(false); setBossWarningCountdown(null);
     setCastingAnimation(false); setCastingSpellName(null); setDefenseResult(null);
+    setBossInputBuffer(''); setBossCandidates(allSpells);
     showWaveIntro(1, false);
   }, [showWaveIntro]);
 
-  // --- メインタイマー（50msごと） ---
+  // --- メインタイマー ---
   useEffect(() => {
     if (phase !== 'normal' && phase !== 'boss') {
       clearTimers();
@@ -188,12 +248,10 @@ const GameManager: React.FC = () => {
 
     const scheduleAttack = () => {
       bossAttackTimerRef.current = window.setTimeout(() => {
-        // 警告開始
         const warningStart = Date.now();
         setBossWarning(true);
         setBossWarningCountdown(warningMs / 1000);
 
-        // カウントダウン更新（100msごと）
         bossCountdownIntervalRef.current = window.setInterval(() => {
           const elapsed = Date.now() - warningStart;
           const remaining = Math.max(0, (warningMs - elapsed) / 1000);
@@ -206,7 +264,6 @@ const GameManager: React.FC = () => {
           }
         }, 100);
 
-        // 攻撃実行（警告時間後）
         window.setTimeout(() => {
           if (bossCountdownIntervalRef.current) {
             clearInterval(bossCountdownIntervalRef.current);
@@ -215,7 +272,6 @@ const GameManager: React.FC = () => {
           setBossWarning(false);
           setBossWarningCountdown(null);
 
-          // currentSpellRef で最新の呪文種別を参照
           if (currentSpellRef.current?.type !== 'defense') {
             takeDamage(attackDamage);
             setDefenseResult('fail');
@@ -223,7 +279,6 @@ const GameManager: React.FC = () => {
             setDefenseResult('success');
           }
           setTimeout(() => setDefenseResult(null), 1200);
-
           scheduleAttack();
         }, warningMs);
       }, intervalMs - warningMs);
@@ -235,7 +290,6 @@ const GameManager: React.FC = () => {
       if (bossAttackTimerRef.current) clearTimeout(bossAttackTimerRef.current);
       if (bossCountdownIntervalRef.current) clearInterval(bossCountdownIntervalRef.current);
     };
-  // currentSpell?.type を依存から外してrefで読む
   }, [phase, bossEnemy, takeDamage]); // eslint-disable-line
 
   // --- ゲームオーバー判定 ---
@@ -254,7 +308,7 @@ const GameManager: React.FC = () => {
     }
   }, [playerHp, phase, clearTimers, score, wave, maxCombo, enemiesDefeated, totalTyped, correctTyped]);
 
-  // --- タイムアップ → 次の敵へ（通常フェーズ） ---
+  // --- タイムアップ → 次の敵（通常フェーズ） ---
   useEffect(() => {
     if (timeRemaining <= 0 && phase === 'normal') {
       const nextIndex = currentEnemyIndex + 1;
@@ -277,7 +331,7 @@ const GameManager: React.FC = () => {
     }
   }, [timeRemaining, phase, currentEnemyIndex, enemies.length, wave, showWaveIntro]);
 
-  // --- 魔法陣進捗計算 ---
+  // --- 魔法陣進捗 ---
   const magicProgress = currentSpell
     ? (() => {
         const totalChars = currentSpell.segments.reduce(
@@ -288,9 +342,8 @@ const GameManager: React.FC = () => {
           typedChars += getDisplayRomaji(currentSpell.segments[i]).length;
         }
         if (typingState && currentSegmentIndex === completedSegments) {
-          const chars = typingState.chars;
           for (let ci = 0; ci < typingState.currentCharIndex; ci++) {
-            typedChars += getDisplayChar(chars[ci]).length;
+            typedChars += getDisplayChar(typingState.chars[ci]).length;
           }
           typedChars += typingState.currentInput.length;
         }
@@ -298,22 +351,18 @@ const GameManager: React.FC = () => {
       })()
     : 0;
 
-  // --- 呪文完了処理（ゲームロジックを即時実行、アニメーションは非同期） ---
+  // --- 呪文完了処理 ---
   const onSpellComplete = useCallback(() => {
     if (!currentSpell) return;
 
-    // 完了した呪文の名前をキャプチャしてアニメーション表示（非ブロッキング）
+    // アニメーション（ノンブロッキング）
     setCastingSpellName(`${currentSpell.name}（${currentSpell.nameReading}）`);
     setCastingAnimation(true);
-    setTimeout(() => {
-      setCastingAnimation(false);
-      setCastingSpellName(null);
-    }, 1500);
+    setTimeout(() => { setCastingAnimation(false); setCastingSpellName(null); }, 1500);
 
     if (currentSpell.type === 'attack') {
       const multiplier = getComboMultiplier(combo);
       const damage = Math.floor(currentSpell.baseDamage * multiplier);
-
       const baseScore = currentSpell.baseDamage * 10;
       const timeBonus = timeRemaining / timeLimit > 0.8 ? 1.5 : timeRemaining / timeLimit > 0.5 ? 1.2 : 1.0;
       const missBonus = currentSpellHasMiss ? 1.0 : 1.5;
@@ -349,7 +398,6 @@ const GameManager: React.FC = () => {
           }
         }
 
-        // 即座に次の呪文をセット（アニメーション待ちなし）
         const spell = getRandomAttackSpell(wave);
         setCurrentSpell(spell);
         setCurrentSegmentIndex(0);
@@ -374,25 +422,16 @@ const GameManager: React.FC = () => {
           return;
         }
 
-        // ボス戦: 同じ呪文を即座にリセット
-        setCurrentSegmentIndex(0);
-        setCompletedSegments(0);
-        setCurrentSpellHasMiss(false);
-        setTypingState(createTypingState(currentSpell.segments[0]));
+        // 呪文完了 → 候補モードに戻る
+        returnToCandidateMode();
       }
+
     } else {
-      // 防御呪文完了 → 攻撃呪文に戻す
-      if (phase === 'boss') {
-        const spell = attackSpells[selectedBossSpellIndex < attackSpells.length ? selectedBossSpellIndex : 0];
-        setCurrentSpell(spell);
-        setCurrentSegmentIndex(0);
-        setCompletedSegments(0);
-        setCurrentSpellHasMiss(false);
-        setTypingState(createTypingState(spell.segments[0]));
-      }
+      // 防御呪文完了 → 候補モードに戻る
+      if (phase === 'boss') returnToCandidateMode();
     }
   }, [currentSpell, combo, phase, enemies, currentEnemyIndex, wave, bossEnemy,
-      timeRemaining, timeLimit, currentSpellHasMiss, showWaveIntro, selectedBossSpellIndex]);
+      timeRemaining, timeLimit, currentSpellHasMiss, showWaveIntro, returnToCandidateMode]);
 
   // --- キーボード入力 ---
   useEffect(() => {
@@ -409,56 +448,64 @@ const GameManager: React.FC = () => {
         return;
       }
       if (phase !== 'normal' && phase !== 'boss') return;
-      // castingAnimation 中も入力を受け付ける（ブロックしない）
 
-      // ボス戦呪文切替キー
-      if (phase === 'boss') {
-        const numKey = parseInt(e.key);
-        if (numKey >= 1 && numKey <= 5) {
-          const spell = attackSpells[numKey - 1];
-          setCurrentSpell(spell);
-          setSelectedBossSpellIndex(numKey - 1);
-          setCurrentSegmentIndex(0);
-          setCompletedSegments(0);
-          setCurrentSpellHasMiss(false);
-          setTypingState(createTypingState(spell.segments[0]));
-          return;
+      // --- Ctrl+C: 詠唱中断（ボス戦のみ）---
+      if (e.ctrlKey && e.key === 'c') {
+        if (phase === 'boss') {
+          e.preventDefault();
+          returnToCandidateMode();
         }
-        if (e.key.toLowerCase() === 'q') {
-          setCurrentSpell(defenseSpells[0]);
-          setSelectedBossSpellIndex(attackSpells.length);
-          setCurrentSegmentIndex(0);
-          setCompletedSegments(0);
-          setCurrentSpellHasMiss(false);
-          setTypingState(createTypingState(defenseSpells[0].segments[0]));
-          return;
-        }
-        if (e.key.toLowerCase() === 'w') {
-          setCurrentSpell(defenseSpells[1]);
-          setSelectedBossSpellIndex(attackSpells.length + 1);
-          setCurrentSegmentIndex(0);
-          setCompletedSegments(0);
-          setCurrentSpellHasMiss(false);
-          setTypingState(createTypingState(defenseSpells[1].segments[0]));
-          return;
-        }
+        return;
       }
 
       const key = e.key.toLowerCase();
       if (key.length !== 1 || !/[a-z-]/.test(key)) return;
+
+      // ========== ボス戦: 候補モード（currentSpell が未確定）==========
+      if (phase === 'boss' && !currentSpell) {
+        const newBuffer = bossInputBuffer + key;
+
+        // 全呪文に対して入力をリプレイして候補を絞り込む
+        const matched: Array<{ spell: Spell; match: NonNullable<ReturnType<typeof tryReplayInput>> }> = [];
+        for (const spell of allSpells) {
+          const m = tryReplayInput(spell, newBuffer);
+          if (m) matched.push({ spell, match: m });
+        }
+
+        if (matched.length === 0) {
+          // どの呪文にもマッチしない → ミスフラッシュ、バッファは変えない
+          setMissFlash(true);
+          setTimeout(() => setMissFlash(false), 120);
+          return;
+        }
+
+        setBossInputBuffer(newBuffer);
+        setBossCandidates(matched.map(m => m.spell));
+
+        if (matched.length === 1) {
+          // 呪文が1つに確定
+          const { spell, match } = matched[0];
+          setCurrentSpell(spell);
+          setCurrentSegmentIndex(match.segmentIndex);
+          setCompletedSegments(match.completedSegments);
+          setTypingState(match.typingState);
+          setBossInputBuffer('');
+          setCurrentSpellHasMiss(false);
+        }
+        return;
+      }
+
+      // ========== 通常タイピング（呪文確定後） ==========
       if (!typingState || !currentSpell) return;
 
       const { result, state: newState } = processInput(typingState, key);
 
-      // ん の後の余分な n を無音でスキップ（カウントしない）
-      if (result === 'absorb') return;
+      if (result === 'absorb') return; // ん 後の余分な n を無視
 
       setTotalTyped(prev => prev + 1);
 
       if (result === 'miss') {
         setCurrentSpellHasMiss(true);
-        // 巻き戻しなし: 現在位置をそのまま維持
-        // ミスフラッシュで視覚フィードバック
         setMissFlash(true);
         setTimeout(() => setMissFlash(false), 120);
         return;
@@ -484,8 +531,8 @@ const GameManager: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, typingState, currentSpell, currentSegmentIndex,
-      startGame, onSpellComplete, selectedBossSpellIndex]);
+  }, [phase, typingState, currentSpell, currentSegmentIndex, bossInputBuffer,
+      startGame, onSpellComplete, returnToCandidateMode]);
 
   // --- レンダリング ---
   if (phase === 'title') {
@@ -517,12 +564,13 @@ const GameManager: React.FC = () => {
 
   const isBoss = phase === 'boss';
   const currentEnemy = isBoss ? bossEnemy : (enemies[currentEnemyIndex] || null);
+  const inCandidateMode = isBoss && !currentSpell;
 
   return (
     <div className={`relative min-h-screen bg-background select-none overflow-hidden ${
       damageFlash ? 'animate-screen-shake' : ''
     }`}>
-      {/* ダメージフラッシュ（画面縁赤） */}
+      {/* ダメージフラッシュ */}
       {damageFlash && (
         <div
           className="absolute inset-0 z-50 pointer-events-none border-[6px] border-destructive/60"
@@ -530,18 +578,18 @@ const GameManager: React.FC = () => {
         />
       )}
 
-      {/* ボス攻撃警告フラッシュ（画面縁パルス） */}
+      {/* ボス攻撃警告フラッシュ */}
       {bossWarning && (
         <div className="absolute inset-0 z-40 pointer-events-none border-2 border-timer-warning/30 animate-pulse" />
       )}
 
-      {/* 防御成功 / 失敗フィードバック */}
+      {/* 防御成功/失敗フィードバック */}
       {defenseResult && (
         <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center">
-          <div className={`animate-fade-in-up text-center px-8 py-4 rounded-sm ${
+          <div className={`animate-fade-in-up text-center px-8 py-4 rounded-sm border ${
             defenseResult === 'success'
-              ? 'border border-primary/30 bg-primary/5'
-              : 'border border-destructive/30 bg-destructive/5'
+              ? 'border-primary/30 bg-primary/5'
+              : 'border-destructive/30 bg-destructive/5'
           }`}>
             <p className={`font-serif-jp text-4xl font-bold tracking-[0.3em] ${
               defenseResult === 'success' ? 'text-primary' : 'text-destructive'
@@ -552,7 +600,7 @@ const GameManager: React.FC = () => {
         </div>
       )}
 
-      {/* 発動アニメーションオーバーレイ（入力はブロックしない） */}
+      {/* 発動アニメーション（ノンブロッキング） */}
       {castingAnimation && castingSpellName && (
         <div className="absolute inset-x-0 top-1/3 z-20 pointer-events-none flex justify-center">
           <p className="font-serif-jp text-2xl tracking-[0.3em] text-foreground/60 animate-fade-in-up">
@@ -575,20 +623,13 @@ const GameManager: React.FC = () => {
 
       {/* ゲームエリア */}
       <div className="flex min-h-screen">
-        {/* ボス呪文リスト（左） */}
+        {/* ボス戦: 呪文候補リスト（左パネル） */}
         {isBoss && (
-          <div className="w-48 flex items-center">
+          <div className="w-52 flex items-center overflow-y-auto">
             <BossSpellList
-              selectedIndex={selectedBossSpellIndex}
-              onSelect={(spell) => {
-                const idx = [...attackSpells, ...defenseSpells].findIndex(s => s.id === spell.id);
-                setSelectedBossSpellIndex(idx);
-                setCurrentSpell(spell);
-                setCurrentSegmentIndex(0);
-                setCompletedSegments(0);
-                setCurrentSpellHasMiss(false);
-                setTypingState(createTypingState(spell.segments[0]));
-              }}
+              candidates={bossCandidates}
+              currentSpell={currentSpell}
+              inputBuffer={bossInputBuffer}
             />
           </div>
         )}
@@ -608,19 +649,38 @@ const GameManager: React.FC = () => {
           )}
 
           {/* 魔法陣 */}
-          {currentSpell && (
-            <MagicCircle
-              progress={magicProgress}
-              combo={combo}
-              element={currentSpell.element}
-              circleType={currentSpell.magicCircleType}
-              castingAnimation={castingAnimation}
-            />
+          <MagicCircle
+            progress={magicProgress}
+            combo={combo}
+            element={currentSpell?.element ?? 'light'}
+            circleType={currentSpell?.magicCircleType ?? 'circle'}
+            castingAnimation={castingAnimation}
+          />
+
+          <div className="h-4" />
+
+          {/* 候補モード: 入力バッファ表示 */}
+          {inCandidateMode && (
+            <div className="flex flex-col items-center gap-2">
+              <div className={`font-mono-code text-2xl tracking-[0.3em] min-h-[2.5rem] transition-colors ${
+                missFlash ? 'text-destructive' : 'text-foreground'
+              }`}>
+                {bossInputBuffer
+                  ? <>{bossInputBuffer}<span className="animate-pulse opacity-60">_</span></>
+                  : <span className="text-muted-foreground/30 text-base tracking-normal font-sans-jp">
+                      唱えたい呪文のローマ字を入力...
+                    </span>
+                }
+              </div>
+              {bossInputBuffer && (
+                <p className="font-mono-code text-xs text-muted-foreground/40">
+                  候補: {bossCandidates.length}件
+                </p>
+              )}
+            </div>
           )}
 
-          <div className="h-8" />
-
-          {/* 呪文テキスト（常時表示、アニメーション中も入力可） */}
+          {/* 詠唱モード: 呪文テキスト表示 */}
           {currentSpell && typingState && (
             <SpellDisplay
               textJp={currentSpell.textJp}
