@@ -68,3 +68,9 @@
   80% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+@keyframes defense-repel {
+  0%   { opacity: 0.65; transform: scale(1);    filter: brightness(1); }
+  25%  { opacity: 1;    transform: scale(1.15); filter: brightness(2.5); }
+  100% { opacity: 0;    transform: scale(1.6);  filter: brightness(0.3); }
+}

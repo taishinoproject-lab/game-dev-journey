@@ -18,25 +18,36 @@ const BossSpellList: React.FC<BossSpellListProps> = ({ candidates, currentSpell,
     const fullRomaji = getDisplayRomaji(spell.segments.join(''));
     const isDefense = spell.type === 'defense';
 
-    // 候補の場合、タイプ済み部分と未入力部分を色分け
-    const renderRomaji = () => {
-      if (!isCandidate) {
-        return <span className="font-mono-code text-xs text-muted-foreground/20">{fullRomaji}</span>;
+    // 先頭3文字は常に大きく表示、残りは小さく
+    const headRomaji = fullRomaji.slice(0, 3);
+    const tailRomaji = fullRomaji.slice(3);
+
+    // 候補行のtail部分：inputBuffer と合わせて打ち込み済み/未入力を色分け
+    const renderTail = () => {
+      if (!isCandidate && !isCasting) {
+        return <span className="font-mono-code text-xs text-muted-foreground/15">{tailRomaji}</span>;
       }
       if (isCasting) {
-        return <span className="font-mono-code text-xs text-primary/70">{fullRomaji}</span>;
+        return <span className="font-mono-code text-xs text-primary/60">{tailRomaji}</span>;
       }
-      // inputBuffer がある場合、先頭一致部分を強調
-      if (inputBuffer && fullRomaji.startsWith(inputBuffer)) {
+      // inputBuffer の先頭3文字を超えた部分がtailの入力済み分
+      if (inputBuffer.length > 3 && fullRomaji.startsWith(inputBuffer)) {
+        const typed = inputBuffer.slice(3);
         return (
           <span className="font-mono-code text-xs">
-            <span className="text-foreground">{inputBuffer}</span>
-            <span className="text-muted-foreground/50">{fullRomaji.slice(inputBuffer.length)}</span>
+            <span className="text-foreground">{typed}</span>
+            <span className="text-muted-foreground/40">{tailRomaji.slice(typed.length)}</span>
           </span>
         );
       }
-      return <span className="font-mono-code text-xs text-muted-foreground/50">{fullRomaji}</span>;
+      return <span className="font-mono-code text-xs text-muted-foreground/40">{tailRomaji}</span>;
     };
+
+    const headColor = isCasting
+      ? 'text-primary'
+      : isCandidate
+        ? 'text-foreground'
+        : 'text-muted-foreground/25';
 
     return (
       <div
@@ -45,8 +56,8 @@ const BossSpellList: React.FC<BossSpellListProps> = ({ candidates, currentSpell,
           isCasting
             ? 'border-primary/40 bg-primary/5 opacity-100'
             : isCandidate
-              ? 'border-foreground/10 opacity-75'
-              : 'border-transparent opacity-15'
+              ? 'border-foreground/10 opacity-90'
+              : 'border-transparent opacity-30'
         }`}
       >
         <div className="flex items-center gap-2">
@@ -60,8 +71,14 @@ const BossSpellList: React.FC<BossSpellListProps> = ({ candidates, currentSpell,
             <span className="font-mono-code text-xs text-muted-foreground/40">防</span>
           )}
         </div>
-        <div className="truncate max-w-[160px]">
-          {renderRomaji()}
+        {/* 先頭3文字を大きく、残りを小さく横並びで表示 */}
+        <div className="flex items-baseline gap-0 max-w-[160px]">
+          <span className={`font-mono-code text-base font-bold leading-none ${headColor}`}>
+            {headRomaji}
+          </span>
+          <span className="truncate">
+            {renderTail()}
+          </span>
         </div>
       </div>
     );

@@ -109,6 +109,11 @@ const GameManager: React.FC = () => {
   const [isNewHighScore, setIsNewHighScore] = useState(false);
   const [defenseResult, setDefenseResult] = useState<'success' | 'fail' | null>(null);
   const [missFlash, setMissFlash] = useState(false);
+  // 防御呪文が詠唱完了して「防御バリア」が張られている状態
+  const [activeDefense, setActiveDefense] = useState<Spell | null>(null);
+  // 撃退アニメーション用（activeDefense が消えた後も overlay を表示し続けるため別管理）
+  const [defenseOverlaySpell, setDefenseOverlaySpell] = useState<Spell | null>(null);
+  const [defenseRepelling, setDefenseRepelling] = useState(false);
 
   const timerRef = useRef<number | null>(null);
   const bossAttackTimerRef = useRef<number | null>(null);
@@ -116,6 +121,8 @@ const GameManager: React.FC = () => {
   const lastTickRef = useRef(Date.now());
   const currentSpellRef = useRef<Spell | null>(currentSpell);
   useEffect(() => { currentSpellRef.current = currentSpell; }, [currentSpell]);
+  const activeDefenseRef = useRef<Spell | null>(null);
+  useEffect(() => { activeDefenseRef.current = activeDefense; }, [activeDefense]);
 
   const clearTimers = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -182,6 +189,9 @@ const GameManager: React.FC = () => {
     setCompletedSegments(0);
     setTypingState(null);
     setCurrentSpellHasMiss(false);
+    setActiveDefense(null);
+    setDefenseOverlaySpell(null);
+    setDefenseRepelling(false);
 
     const tl = getBossTimeLimit(w);
     setTimeLimit(tl);
@@ -212,6 +222,7 @@ const GameManager: React.FC = () => {
     setWave(1); setDamageFlash(false); setBossWarning(false); setBossWarningCountdown(null);
     setCastingAnimation(false); setCastingSpellName(null); setDefenseResult(null);
     setBossInputBuffer(''); setBossCandidates(allSpells);
+    setActiveDefense(null); setDefenseOverlaySpell(null); setDefenseRepelling(false);
     showWaveIntro(1, false);
   }, [showWaveIntro]);
 
@@ -272,11 +283,18 @@ const GameManager: React.FC = () => {
           setBossWarning(false);
           setBossWarningCountdown(null);
 
-          if (currentSpellRef.current?.type !== 'defense') {
+          if (activeDefenseRef.current !== null) {
+            // 防御バリアが張られている → 攻撃を弾く
+            setActiveDefense(null);
+            setDefenseRepelling(true);
+            setTimeout(() => {
+              setDefenseOverlaySpell(null);
+              setDefenseRepelling(false);
+            }, 800);
+            setDefenseResult('success');
+          } else {
             takeDamage(attackDamage);
             setDefenseResult('fail');
-          } else {
-            setDefenseResult('success');
           }
           setTimeout(() => setDefenseResult(null), 1200);
           scheduleAttack();
@@ -427,7 +445,10 @@ const GameManager: React.FC = () => {
       }
 
     } else {
-      // 防御呪文完了 → 候補モードに戻る
+      // 防御呪文完了 → バリアを展開し、候補モードに戻る
+      setActiveDefense(currentSpell);
+      setDefenseOverlaySpell(currentSpell);
+      setDefenseRepelling(false);
       if (phase === 'boss') returnToCandidateMode();
     }
   }, [currentSpell, combo, phase, enemies, currentEnemyIndex, wave, bossEnemy,
@@ -648,14 +669,41 @@ const GameManager: React.FC = () => {
             />
           )}
 
-          {/* 魔法陣 */}
-          <MagicCircle
-            progress={magicProgress}
-            combo={combo}
-            element={currentSpell?.element ?? 'light'}
-            circleType={currentSpell?.magicCircleType ?? 'circle'}
-            castingAnimation={castingAnimation}
-          />
+          {/* 魔法陣（防御バリアオーバーレイ付き） */}
+          <div className="relative">
+            <MagicCircle
+              progress={magicProgress}
+              combo={combo}
+              element={currentSpell?.element ?? 'light'}
+              circleType={currentSpell?.magicCircleType ?? 'circle'}
+              castingAnimation={castingAnimation}
+            />
+            {/* 防御バリア残留オーバーレイ */}
+            {defenseOverlaySpell && (
+              <div
+                className={`absolute inset-0 pointer-events-none ${
+                  defenseRepelling ? 'animate-defense-repel' : ''
+                }`}
+                style={!defenseRepelling ? { opacity: 0.55 } : undefined}
+              >
+                <MagicCircle
+                  progress={1}
+                  combo={combo}
+                  element={defenseOverlaySpell.element}
+                  circleType={defenseOverlaySpell.magicCircleType}
+                  castingAnimation={false}
+                />
+              </div>
+            )}
+            {/* バリア有効インジケーター */}
+            {activeDefense && !defenseRepelling && (
+              <div className="absolute bottom-2 inset-x-0 flex justify-center pointer-events-none">
+                <span className="font-sans-jp text-xs text-primary/60 tracking-[0.3em] animate-pulse">
+                  防御中
+                </span>
+              </div>
+            )}
+          </div>
 
           <div className="h-4" />
 
@@ -677,6 +725,36 @@ const GameManager: React.FC = () => {
                   候補: {bossCandidates.length}件
                 </p>
               )}
+            </div>
+          )}
+
+          {/* 候補が絞り込まれたら全文表示 */}
+          {inCandidateMode && bossCandidates.length < allSpells.length && (
+            <div className="flex flex-col items-center gap-4 mt-2">
+              {bossCandidates.map(spell => {
+                const fullRomaji = getDisplayRomaji(spell.segments.join(''));
+                const typed = bossInputBuffer;
+                return (
+                  <div key={spell.id} className="flex flex-col items-center gap-1">
+                    <span className="font-serif-jp text-sm text-foreground/50 tracking-widest">
+                      {spell.name}
+                      <span className="font-sans-jp text-xs text-muted-foreground/40 ml-2">
+                        （{spell.nameReading}）
+                      </span>
+                    </span>
+                    <span className="font-mono-code text-lg tracking-wider">
+                      {typed && fullRomaji.startsWith(typed) ? (
+                        <>
+                          <span className="text-foreground">{typed}</span>
+                          <span className="text-muted-foreground/50">{fullRomaji.slice(typed.length)}</span>
+                        </>
+                      ) : (
+                        <span className="text-foreground/70">{fullRomaji}</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
 

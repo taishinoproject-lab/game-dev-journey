@@ -44,11 +44,17 @@ export default {
           "0%, 100%": { opacity: "0.4" },
           "50%": { opacity: "0.8" },
         },
+        "defense-repel": {
+          "0%":   { opacity: "0.65", transform: "scale(1)",    filter: "brightness(1)" },
+          "25%":  { opacity: "1",    transform: "scale(1.15)", filter: "brightness(2.5)" },
+          "100%": { opacity: "0",    transform: "scale(1.6)",  filter: "brightness(0.3)" },
+        },
       },
       animation: {
         "screen-shake": "screen-shake 0.3s ease-in-out",
         "fade-in-up": "fade-in-up 0.5s ease-out",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "defense-repel": "defense-repel 0.8s ease-out forwards",
       },
     },
   },
