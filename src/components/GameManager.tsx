@@ -8,8 +8,6 @@ import {
 import { createNormalEnemies, createBossEnemy, getBossTimeLimit, getNormalTimeLimit } from '../game/enemies';
 import { Enemy } from '../game/types';
 import { isFirstNormal, markFirstNormalDone, isFirstBoss, markFirstBossDone } from '../game/firstPlay';
-import { getDisplayRomaji } from '../game/romajiEngine';
-import { defenseSpells } from '../game/spells';
 import TitleScreen from './TitleScreen';
 import ResultScreen from './ResultScreen';
 import HUD from './HUD';
