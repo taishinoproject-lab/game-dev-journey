@@ -69,6 +69,13 @@
   100% { opacity: 0; }
 }
 
+@keyframes hint-in-out {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
 @keyframes defense-repel {
   0%   { opacity: 0.65; transform: scale(1);    filter: brightness(1); }
   25%  { opacity: 1;    transform: scale(1.15); filter: brightness(2.5); }

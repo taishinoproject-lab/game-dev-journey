@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import SpellListOverlay from './SpellListOverlay';
 
 interface TitleScreenProps {
   onStart: () => void;
@@ -6,6 +7,23 @@ interface TitleScreenProps {
 }
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
+  const [showSpellList, setShowSpellList] = useState(false);
+
+  // H キーで呪文一覧を開閉（Enter / Tab は GameManager 側で処理）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'h' || e.key === 'H') {
+        setShowSpellList(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  if (showSpellList) {
+    return <SpellListOverlay onClose={() => setShowSpellList(false)} />;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background select-none">
       {/* Large empty space above - BLEACH aesthetic */}
@@ -43,9 +61,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
       {/* Large empty space below */}
       <div className="flex-1" />
 
-      <p className="font-mono-code text-xs text-muted-foreground/30 mb-8">
-        PC KEYBOARD ONLY
-      </p>
+      <div className="flex flex-col items-center gap-2 mb-8">
+        <p className="font-mono-code text-xs text-muted-foreground/30 tracking-[0.2em]">
+          H: 呪文一覧 &nbsp;·&nbsp; Tab: 即スタート
+        </p>
+        <p className="font-mono-code text-xs text-muted-foreground/20">
+          PC KEYBOARD ONLY
+        </p>
+      </div>
     </div>
   );
 };

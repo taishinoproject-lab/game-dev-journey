@@ -7,6 +7,9 @@ import {
 } from '../game/romajiEngine';
 import { createNormalEnemies, createBossEnemy, getBossTimeLimit, getNormalTimeLimit } from '../game/enemies';
 import { Enemy } from '../game/types';
+import { isFirstNormal, markFirstNormalDone, isFirstBoss, markFirstBossDone } from '../game/firstPlay';
+import { getDisplayRomaji } from '../game/romajiEngine';
+import { defenseSpells } from '../game/spells';
 import TitleScreen from './TitleScreen';
 import ResultScreen from './ResultScreen';
 import HUD from './HUD';
@@ -109,6 +112,8 @@ const GameManager: React.FC = () => {
   const [isNewHighScore, setIsNewHighScore] = useState(false);
   const [defenseResult, setDefenseResult] = useState<'success' | 'fail' | null>(null);
   const [missFlash, setMissFlash] = useState(false);
+  // インゲームヒント（初回プレイ用）
+  const [inGameHint, setInGameHint] = useState<{ lines: string[]; duration: number } | null>(null);
   // 防御呪文が詠唱完了して「防御バリア」が張られている状態
   const [activeDefense, setActiveDefense] = useState<Spell | null>(null);
   // 撃退アニメーション用（activeDefense が消えた後も overlay を表示し続けるため別管理）
@@ -170,6 +175,19 @@ const GameManager: React.FC = () => {
     setTimeRemaining(tl);
     lastTickRef.current = Date.now();
     setPhase('normal');
+
+    // 初回プレイ: 通常フェーズのヒントを表示
+    if (isFirstNormal()) {
+      markFirstNormalDone();
+      setInGameHint({
+        lines: [
+          '制限時間内にローマ字で呪文を入力せよ',
+          'ミスタイプしても進捗は巻き戻らない',
+        ],
+        duration: 5000,
+      });
+      setTimeout(() => setInGameHint(null), 5000);
+    }
   }, []);
 
   // --- ボスフェーズ開始（呪文は未選択・候補モードで開始） ---
@@ -198,6 +216,24 @@ const GameManager: React.FC = () => {
     setTimeRemaining(tl);
     lastTickRef.current = Date.now();
     setPhase('boss');
+
+    // 初回ボス: ボス戦の操作ヒントを表示
+    if (isFirstBoss()) {
+      markFirstBossDone();
+      const seki = defenseSpells.find(s => s.id === 'bakudo_001')!;
+      const dankuu = defenseSpells.find(s => s.id === 'bakudo_081')!;
+      const sekiRomaji = getDisplayRomaji(seki.segments[0]);
+      const dankuuRomaji = getDisplayRomaji(dankuu.segments[0]);
+      setInGameHint({
+        lines: [
+          'タイプすると呪文が自動で絞り込まれる  ·  Ctrl+C で詠唱中断',
+          `攻撃予告が来たら防御呪文を詠唱せよ`,
+          `斥（${sekiRomaji}）  /  断空（${dankuuRomaji}...）`,
+        ],
+        duration: 7000,
+      });
+      setTimeout(() => setInGameHint(null), 7000);
+    }
   }, []);
 
   // --- ウェーブイントロ ---
@@ -460,7 +496,10 @@ const GameManager: React.FC = () => {
       if (e.repeat) return;
 
       if (phase === 'title') {
-        if (e.key === 'Enter') startGame();
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          startGame();
+        }
         return;
       }
       if (phase === 'result') {
@@ -597,6 +636,29 @@ const GameManager: React.FC = () => {
           className="absolute inset-0 z-50 pointer-events-none border-[6px] border-destructive/60"
           style={{ animation: 'damage-flash 0.3s ease-out forwards' }}
         />
+      )}
+
+      {/* インゲームヒント（初回プレイ用） */}
+      {inGameHint && (
+        <div
+          className="absolute inset-x-0 top-20 z-30 pointer-events-none flex justify-center px-8"
+          style={{ animation: `hint-in-out ${inGameHint.duration}ms ease-in-out forwards` }}
+        >
+          <div className="border border-foreground/10 bg-background/80 px-6 py-3 rounded-sm text-center max-w-xl">
+            {inGameHint.lines.map((line, i) => (
+              <p
+                key={i}
+                className={`font-mono-code tracking-wider ${
+                  i === 0
+                    ? 'text-sm text-foreground/70'
+                    : 'text-xs text-muted-foreground/50 mt-1'
+                }`}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ボス攻撃警告フラッシュ */}
