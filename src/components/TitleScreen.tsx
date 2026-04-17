@@ -9,16 +9,25 @@ interface TitleScreenProps {
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
   const [showSpellList, setShowSpellList] = useState(false);
 
-  // H キーで呪文一覧を開閉（Enter / Tab は GameManager 側で処理）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'h' || e.key === 'H') {
         setShowSpellList(prev => !prev);
+        return;
+      }
+      // Tab: ブラウザのフォーカス管理と競合しないよう、ここで直接処理
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        onStart();
+        return;
+      }
+      if (e.key === 'Enter') {
+        onStart();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [onStart]);
 
   if (showSpellList) {
     return <SpellListOverlay onClose={() => setShowSpellList(false)} />;

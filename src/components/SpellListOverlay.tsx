@@ -19,7 +19,7 @@ const SpellListOverlay: React.FC<SpellListOverlayProps> = ({ onClose }) => {
         e.preventDefault();
         onClose();
       }
-      // Tab / Enter はそのまま伝播させ GameManager 側で startGame() を呼ばせる
+      // Tab / Enter は TitleScreen 側のハンドラが処理するのでここでは何もしない
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
