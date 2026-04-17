@@ -15,7 +15,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
         setShowSpellList(prev => !prev);
         return;
       }
-      // Tab: ブラウザのフォーカス管理と競合しないよう、ここで直接処理
+      // Tab: ページにフォーカスがある場合のサブ手段として残す
       if (e.key === 'Tab') {
         e.preventDefault();
         onStart();
@@ -34,7 +34,16 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background select-none">
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-background select-none">
+
+      {/* スキップボタン（右上）*/}
+      <button
+        onClick={onStart}
+        className="absolute top-6 right-8 font-mono-code text-xs tracking-[0.3em] text-muted-foreground/20 hover:text-muted-foreground/50 transition-colors duration-500"
+      >
+        SKIP →
+      </button>
+
       {/* Large empty space above - BLEACH aesthetic */}
       <div className="flex-1" />
 
@@ -70,10 +79,22 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
       {/* Large empty space below */}
       <div className="flex-1" />
 
-      <div className="flex flex-col items-center gap-2 mb-8">
-        <p className="font-mono-code text-xs text-muted-foreground/30 tracking-[0.2em]">
-          H: 呪文一覧 &nbsp;·&nbsp; Tab: 即スタート
-        </p>
+      <div className="flex flex-col items-center gap-3 mb-8">
+        <div className="flex items-center gap-6">
+          <button
+            onClick={() => setShowSpellList(true)}
+            className="font-mono-code text-xs text-muted-foreground/30 tracking-[0.2em] hover:text-muted-foreground transition-colors duration-300"
+          >
+            H: 呪文一覧
+          </button>
+          <span className="font-mono-code text-xs text-muted-foreground/15">·</span>
+          <button
+            onClick={onStart}
+            className="font-mono-code text-xs text-muted-foreground/30 tracking-[0.2em] hover:text-muted-foreground transition-colors duration-300"
+          >
+            Tab: 即スタート
+          </button>
+        </div>
         <p className="font-mono-code text-xs text-muted-foreground/20">
           PC KEYBOARD ONLY
         </p>

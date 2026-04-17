@@ -494,10 +494,7 @@ const GameManager: React.FC = () => {
       if (e.repeat) return;
 
       if (phase === 'title') {
-        if (e.key === 'Enter' || e.key === 'Tab') {
-          e.preventDefault();
-          startGame();
-        }
+        if (e.key === 'Enter') startGame();
         return;
       }
       if (phase === 'result') {
