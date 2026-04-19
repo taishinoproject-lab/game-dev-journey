@@ -506,6 +506,13 @@ const GameManager: React.FC = () => {
       }
       if (phase !== 'normal' && phase !== 'boss') return;
 
+      // Esc: 表示中のヒントを閉じる（チュートリアル即スキップ）
+      if (e.key === 'Escape' && inGameHint) {
+        e.preventDefault();
+        setInGameHint(null);
+        return;
+      }
+
       // --- Ctrl+C: 詠唱中断（ボス戦のみ）---
       if (e.ctrlKey && e.key === 'c') {
         if (phase === 'boss') {
