@@ -179,12 +179,13 @@ const GameManager: React.FC = () => {
       markFirstNormalDone();
       setInGameHint({
         lines: [
-          '制限時間内にローマ字で呪文を入力せよ',
-          'ミスタイプしても進捗は巻き戻らない',
+          '— 破道を詠唱し、虚を討伐せよ —',
+          '画面の呪文をローマ字で入力 / ミスしても巻き戻らない',
+          'Esc: ヒントを閉じる',
         ],
-        duration: 5000,
+        duration: 6000,
       });
-      setTimeout(() => setInGameHint(null), 5000);
+      setTimeout(() => setInGameHint(null), 6000);
     }
   }, []);
 
@@ -224,13 +225,14 @@ const GameManager: React.FC = () => {
       const dankuuRomaji = getDisplayRomaji(dankuu.segments[0]);
       setInGameHint({
         lines: [
-          'タイプすると呪文が自動で絞り込まれる  ·  Ctrl+C で詠唱中断',
-          `攻撃予告が来たら防御呪文を詠唱せよ`,
-          `斥（${sekiRomaji}）  /  断空（${dankuuRomaji}...）`,
+          '— ボス戦：縛道で身を護り、破道で討て —',
+          'タイプで呪文が自動で絞り込まれる  ·  Ctrl+C で詠唱中断',
+          `攻撃予告 → 斥（${sekiRomaji}）or 断空（${dankuuRomaji}...）で防御`,
+          'Esc: ヒントを閉じる',
         ],
-        duration: 7000,
+        duration: 8000,
       });
-      setTimeout(() => setInGameHint(null), 7000);
+      setTimeout(() => setInGameHint(null), 8000);
     }
   }, []);
 
