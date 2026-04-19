@@ -179,12 +179,13 @@ const GameManager: React.FC = () => {
       markFirstNormalDone();
       setInGameHint({
         lines: [
-          '制限時間内にローマ字で呪文を入力せよ',
-          'ミスタイプしても進捗は巻き戻らない',
+          '— 破道を詠唱し、虚を討伐せよ —',
+          '画面の呪文をローマ字で入力 / ミスしても巻き戻らない',
+          'Esc: ヒントを閉じる',
         ],
-        duration: 5000,
+        duration: 6000,
       });
-      setTimeout(() => setInGameHint(null), 5000);
+      setTimeout(() => setInGameHint(null), 6000);
     }
   }, []);
 
@@ -224,13 +225,14 @@ const GameManager: React.FC = () => {
       const dankuuRomaji = getDisplayRomaji(dankuu.segments[0]);
       setInGameHint({
         lines: [
-          'タイプすると呪文が自動で絞り込まれる  ·  Ctrl+C で詠唱中断',
-          `攻撃予告が来たら防御呪文を詠唱せよ`,
-          `斥（${sekiRomaji}）  /  断空（${dankuuRomaji}...）`,
+          '— ボス戦：縛道で身を護り、破道で討て —',
+          'タイプで呪文が自動で絞り込まれる  ·  Ctrl+C で詠唱中断',
+          `攻撃予告 → 斥（${sekiRomaji}）or 断空（${dankuuRomaji}...）で防御`,
+          'Esc: ヒントを閉じる',
         ],
-        duration: 7000,
+        duration: 8000,
       });
-      setTimeout(() => setInGameHint(null), 7000);
+      setTimeout(() => setInGameHint(null), 8000);
     }
   }, []);
 
@@ -504,6 +506,13 @@ const GameManager: React.FC = () => {
       }
       if (phase !== 'normal' && phase !== 'boss') return;
 
+      // Esc: 表示中のヒントを閉じる（チュートリアル即スキップ）
+      if (e.key === 'Escape' && inGameHint) {
+        e.preventDefault();
+        setInGameHint(null);
+        return;
+      }
+
       // --- Ctrl+C: 詠唱中断（ボス戦のみ）---
       if (e.ctrlKey && e.key === 'c') {
         if (phase === 'boss') {
@@ -586,7 +595,7 @@ const GameManager: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, typingState, currentSpell, currentSegmentIndex, bossInputBuffer,
+  }, [phase, typingState, currentSpell, currentSegmentIndex, bossInputBuffer, inGameHint,
       startGame, onSpellComplete, returnToCandidateMode]);
 
   // --- レンダリング ---
@@ -633,25 +642,40 @@ const GameManager: React.FC = () => {
         />
       )}
 
-      {/* インゲームヒント（初回プレイ用） */}
+      {/* インゲームヒント（初回プレイ用 / Esc で即スキップ可能） */}
       {inGameHint && (
         <div
-          className="absolute inset-x-0 top-20 z-30 pointer-events-none flex justify-center px-8"
+          className="absolute inset-x-0 top-20 z-30 flex justify-center px-8"
           style={{ animation: `hint-in-out ${inGameHint.duration}ms ease-in-out forwards` }}
         >
-          <div className="border border-foreground/10 bg-background/80 px-6 py-3 rounded-sm text-center max-w-xl">
-            {inGameHint.lines.map((line, i) => (
-              <p
-                key={i}
-                className={`font-mono-code tracking-wider ${
-                  i === 0
-                    ? 'text-sm text-foreground/70'
-                    : 'text-xs text-muted-foreground/50 mt-1'
-                }`}
-              >
-                {line}
-              </p>
-            ))}
+          <div className="border border-foreground/15 bg-background/90 backdrop-blur-sm px-7 py-4 rounded-sm text-center max-w-2xl shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+            {inGameHint.lines.map((line, i) => {
+              const isLast = i === inGameHint.lines.length - 1;
+              const isTitle = i === 0;
+              if (isLast && line.startsWith('Esc')) {
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setInGameHint(null)}
+                    className="font-mono-code text-[10px] tracking-[0.3em] text-muted-foreground/50 hover:text-foreground/80 transition-colors mt-3 border border-foreground/15 hover:border-foreground/40 px-3 py-1 rounded-sm"
+                  >
+                    {line}
+                  </button>
+                );
+              }
+              return (
+                <p
+                  key={i}
+                  className={`font-mono-code tracking-wider ${
+                    isTitle
+                      ? 'font-serif-jp text-base text-foreground/90 tracking-[0.3em] mb-2'
+                      : 'text-xs text-muted-foreground/70 mt-1'
+                  }`}
+                >
+                  {line}
+                </p>
+              );
+            })}
           </div>
         </div>
       )}
