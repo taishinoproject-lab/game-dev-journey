@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SpellListOverlay from './SpellListOverlay';
+import HowToPlayOverlay from './HowToPlayOverlay';
 
 interface TitleScreenProps {
   onStart: () => void;
@@ -8,6 +9,7 @@ interface TitleScreenProps {
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
   const [showSpellList, setShowSpellList] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -15,6 +17,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
         setShowSpellList(prev => !prev);
         return;
       }
+      if (e.key === '?') {
+        setShowHowToPlay(prev => !prev);
+        return;
+      }
+      // Tab: ページにフォーカスがある場合のサブ手段として残す
       if (e.key === 'Tab') {
         e.preventDefault();
         onStart();
@@ -30,6 +37,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
 
   if (showSpellList) {
     return <SpellListOverlay onClose={() => setShowSpellList(false)} />;
+  }
+  if (showHowToPlay) {
+    return <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />;
   }
 
   return (
@@ -106,6 +116,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
             <kbd className="font-mono-code text-[10px] text-muted-foreground/60 group-hover:text-foreground/80 border border-foreground/20 group-hover:border-foreground/50 px-1.5 py-0.5 rounded-sm">H</kbd>
             <span>呪文一覧</span>
           </button>
+          <button
+            onClick={() => setShowHowToPlay(true)}
+            className="font-mono-code text-xs text-muted-foreground/30 tracking-[0.2em] hover:text-muted-foreground transition-colors duration-300"
+          >
+            ?: 遊び方
+          </button>
+          <span className="font-mono-code text-xs text-muted-foreground/15">·</span>
           <button
             onClick={onStart}
             className="group flex items-center gap-2 font-sans-jp text-xs tracking-[0.25em] text-muted-foreground/70 hover:text-foreground transition-all duration-300 px-4 py-2 border border-foreground/15 hover:border-foreground/40 hover:bg-foreground/5"

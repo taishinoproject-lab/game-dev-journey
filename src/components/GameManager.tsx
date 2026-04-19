@@ -183,9 +183,9 @@ const GameManager: React.FC = () => {
           '画面の呪文をローマ字で入力 / ミスしても巻き戻らない',
           'Esc: ヒントを閉じる',
         ],
-        duration: 6000,
+        duration: 20000,
       });
-      setTimeout(() => setInGameHint(null), 6000);
+      setTimeout(() => setInGameHint(null), 20000);
     }
   }, []);
 
@@ -230,9 +230,9 @@ const GameManager: React.FC = () => {
           `攻撃予告 → 斥（${sekiRomaji}）or 断空（${dankuuRomaji}...）で防御`,
           'Esc: ヒントを閉じる',
         ],
-        duration: 8000,
+        duration: 30000,
       });
-      setTimeout(() => setInGameHint(null), 8000);
+      setTimeout(() => setInGameHint(null), 30000);
     }
   }, []);
 

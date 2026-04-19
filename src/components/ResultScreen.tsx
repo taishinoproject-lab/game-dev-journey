@@ -1,5 +1,5 @@
 import React from 'react';
-import { HighScore } from '../game/types';
+import { HighScore, getComboMultiplier } from '../game/types';
 
 interface ResultScreenProps {
   score: number;
@@ -19,13 +19,14 @@ const ResultScreen: React.FC<ResultScreenProps> = ({
   isNewHighScore, onRetry, onTitle,
 }) => {
   const accuracy = totalTyped > 0 ? Math.floor((correctTyped / totalTyped) * 100) : 0;
+  const comboMultiplier = getComboMultiplier(maxCombo);
 
   const stats = [
     { label: 'SCORE', value: score.toLocaleString(), highlight: true },
     { label: 'WAVE', value: wave.toString() },
-    { label: 'MAX COMBO', value: maxCombo.toString() },
+    { label: 'MAX COMBO', value: `${maxCombo}  →  ×${comboMultiplier.toFixed(1)}` },
     { label: 'ENEMIES', value: enemiesDefeated.toString() },
-    { label: 'NO MISS', value: noMissCount.toString() },
+    { label: 'NO MISS SPELLS', value: `${noMissCount}  →  ×1.5 each` },
     { label: 'TOTAL TYPED', value: totalTyped.toString() },
     { label: 'ACCURACY', value: `${accuracy}%` },
   ];
