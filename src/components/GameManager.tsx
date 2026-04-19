@@ -642,25 +642,40 @@ const GameManager: React.FC = () => {
         />
       )}
 
-      {/* インゲームヒント（初回プレイ用） */}
+      {/* インゲームヒント（初回プレイ用 / Esc で即スキップ可能） */}
       {inGameHint && (
         <div
-          className="absolute inset-x-0 top-20 z-30 pointer-events-none flex justify-center px-8"
+          className="absolute inset-x-0 top-20 z-30 flex justify-center px-8"
           style={{ animation: `hint-in-out ${inGameHint.duration}ms ease-in-out forwards` }}
         >
-          <div className="border border-foreground/10 bg-background/80 px-6 py-3 rounded-sm text-center max-w-xl">
-            {inGameHint.lines.map((line, i) => (
-              <p
-                key={i}
-                className={`font-mono-code tracking-wider ${
-                  i === 0
-                    ? 'text-sm text-foreground/70'
-                    : 'text-xs text-muted-foreground/50 mt-1'
-                }`}
-              >
-                {line}
-              </p>
-            ))}
+          <div className="border border-foreground/15 bg-background/90 backdrop-blur-sm px-7 py-4 rounded-sm text-center max-w-2xl shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+            {inGameHint.lines.map((line, i) => {
+              const isLast = i === inGameHint.lines.length - 1;
+              const isTitle = i === 0;
+              if (isLast && line.startsWith('Esc')) {
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setInGameHint(null)}
+                    className="font-mono-code text-[10px] tracking-[0.3em] text-muted-foreground/50 hover:text-foreground/80 transition-colors mt-3 border border-foreground/15 hover:border-foreground/40 px-3 py-1 rounded-sm"
+                  >
+                    {line}
+                  </button>
+                );
+              }
+              return (
+                <p
+                  key={i}
+                  className={`font-mono-code tracking-wider ${
+                    isTitle
+                      ? 'font-serif-jp text-base text-foreground/90 tracking-[0.3em] mb-2'
+                      : 'text-xs text-muted-foreground/70 mt-1'
+                  }`}
+                >
+                  {line}
+                </p>
+              );
+            })}
           </div>
         </div>
       )}
