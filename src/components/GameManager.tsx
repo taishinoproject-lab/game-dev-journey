@@ -595,7 +595,7 @@ const GameManager: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, typingState, currentSpell, currentSegmentIndex, bossInputBuffer,
+  }, [phase, typingState, currentSpell, currentSegmentIndex, bossInputBuffer, inGameHint,
       startGame, onSpellComplete, returnToCandidateMode]);
 
   // --- レンダリング ---
