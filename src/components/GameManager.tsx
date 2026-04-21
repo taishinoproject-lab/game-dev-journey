@@ -9,6 +9,7 @@ import { createNormalEnemies, createBossEnemy, getBossTimeLimit, getNormalTimeLi
 import { Enemy } from '../game/types';
 import { isFirstNormal, markFirstNormalDone, isFirstBoss, markFirstBossDone } from '../game/firstPlay';
 import TitleScreen from './TitleScreen';
+import TutorialManager from './TutorialManager';
 import ResultScreen from './ResultScreen';
 import HUD from './HUD';
 import MagicCircle from './MagicCircle';
@@ -250,6 +251,11 @@ const GameManager: React.FC = () => {
       else startNormalPhase(w);
     }, 2000);
   }, [startNormalPhase, startBossPhase]);
+
+  // --- チュートリアル開始 ---
+  const startTutorial = useCallback(() => {
+    setPhase('tutorial');
+  }, []);
 
   // --- ゲーム開始 ---
   const startGame = useCallback(() => {
@@ -601,7 +607,10 @@ const GameManager: React.FC = () => {
   // --- レンダリング ---
   if (phase === 'title') {
     const scores = loadHighScores();
-    return <TitleScreen onStart={startGame} highScore={scores[0]?.score || 0} />;
+    return <TitleScreen onStart={startGame} onTutorial={startTutorial} highScore={scores[0]?.score || 0} />;
+  }
+  if (phase === 'tutorial') {
+    return <TutorialManager onComplete={startGame} onSkip={startGame} />;
   }
   if (phase === 'result') {
     return (

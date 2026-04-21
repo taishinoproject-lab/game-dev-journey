@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import SpellListOverlay from './SpellListOverlay';
 import HowToPlayOverlay from './HowToPlayOverlay';
+import { isFirstTutorialDone } from '../game/firstPlay';
 
 interface TitleScreenProps {
   onStart: () => void;
+  onTutorial?: () => void;
   highScore: number;
 }
 
-const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
+const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onTutorial, highScore }) => {
+  const showTutorialPrompt = onTutorial && !isFirstTutorialDone();
   const [showSpellList, setShowSpellList] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
@@ -28,7 +31,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
         return;
       }
       if (e.key === 'Enter') {
-        onStart();
+        if (showTutorialPrompt) onTutorial?.();
+        else onStart();
       }
     };
     window.addEventListener('keydown', handler);
@@ -87,14 +91,32 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, highScore }) => {
         {/* Decorative line */}
         <div className="w-px h-16 bg-gradient-to-b from-transparent via-muted-foreground to-transparent" />
 
-        {/* Start */}
-        <button
-          onClick={onStart}
-          className="group relative font-sans-jp text-sm tracking-[0.4em] text-foreground/80 hover:text-foreground transition-colors duration-500 uppercase px-8 py-3 border border-foreground/20 hover:border-foreground/60"
-        >
-          <span className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/5 transition-colors duration-500" />
-          <span className="relative">Press Enter to Start</span>
-        </button>
+        {/* Start / Tutorial ボタン */}
+        {showTutorialPrompt ? (
+          <div className="flex flex-col items-center gap-4">
+            <button
+              onClick={onTutorial}
+              className="group relative font-sans-jp text-sm tracking-[0.4em] text-foreground/90 hover:text-foreground transition-colors duration-500 uppercase px-10 py-3 border border-foreground/40 hover:border-foreground/80"
+            >
+              <span className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/5 transition-colors duration-500" />
+              <span className="relative">Training Mode</span>
+            </button>
+            <button
+              onClick={onStart}
+              className="font-sans-jp text-xs tracking-[0.3em] text-muted-foreground/50 hover:text-muted-foreground transition-colors duration-300"
+            >
+              スキップして本編へ
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onStart}
+            className="group relative font-sans-jp text-sm tracking-[0.4em] text-foreground/80 hover:text-foreground transition-colors duration-500 uppercase px-8 py-3 border border-foreground/20 hover:border-foreground/60"
+          >
+            <span className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/5 transition-colors duration-500" />
+            <span className="relative">Press Enter to Start</span>
+          </button>
+        )}
 
         {highScore > 0 && (
           <p className="font-mono-code text-xs text-muted-foreground tracking-widest">
