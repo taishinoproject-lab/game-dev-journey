@@ -37,9 +37,11 @@ interface StepConfig {
   title: string;
   instruction: string;
   mode: 'direct' | 'candidate';
-  spell?: Spell;         // direct モード時の固定呪文
-  pool?: Spell[];        // candidate モード時の候補プール
-  hasWarning?: boolean;  // 攻撃予告を即座に発動するか
+  spell?: Spell;          // direct モード時の固定呪文
+  pool?: Spell[];         // candidate モード時の候補プール
+  hasWarning?: boolean;   // 攻撃予告を発動するか
+  warningDelay?: number;  // 準備フェーズの長さ ms（入力無効・呪文を先に見せる）
+  warningDuration?: number; // カウントダウンの長さ ms
 }
 
 const STEP_CONFIG: Record<Exclude<TutorialStep, 'complete'>, StepConfig> = {
@@ -60,18 +62,22 @@ const STEP_CONFIG: Record<Exclude<TutorialStep, 'complete'>, StepConfig> = {
   'defense-seki': {
     number: 3,
     title: '縛道の基礎 — 斥',
-    instruction: '攻撃が来る！左のリストを見て防御呪文を詠唱せよ',
-    mode: 'candidate',
-    pool: [SPELL_SEKI],
+    instruction: '攻撃が迫る — 斥を詠唱して防げ',
+    mode: 'direct',
+    spell: SPELL_SEKI,
     hasWarning: true,
+    warningDelay: 3000,    // 3秒間の準備フェーズ
+    warningDuration: 10000, // 10秒カウントダウン
   },
   'defense-dankuu': {
     number: 4,
     title: '縛道の応用 — 断空',
-    instruction: '断空は二節。詠唱完了でバフも得られる強力な盾だ',
-    mode: 'candidate',
-    pool: [SPELL_DANKUU],
+    instruction: '二節の盾。詠唱を完了させよ',
+    mode: 'direct',
+    spell: SPELL_DANKUU,
     hasWarning: true,
+    warningDelay: 3000,
+    warningDuration: 16000, // 16秒カウントダウン（断空は長い）
   },
   'boss-candidate': {
     number: 5,
@@ -138,6 +144,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
 
   // 攻撃予告（縛道ステップ）
   const [warningActive, setWarningActive] = useState(false);
+  const [warningPending, setWarningPending] = useState(false); // 準備フェーズ中（入力無効）
   const [warningCountdown, setWarningCountdown] = useState<number | null>(null);
   const [defenseFailed, setDefenseFailed] = useState(false);
 
@@ -147,7 +154,6 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
 
   const warningIntervalRef = useRef<number | null>(null);
   const warningStartRef = useRef<number>(0);
-  const WARNING_DURATION = 6000; // 6秒
 
   // ─── ステップ初期化 ───────────────────────────────────
   const initStep = useCallback((newStep: TutorialStep) => {
@@ -158,6 +164,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
     setCastingAnimation(false);
     setCastingSpellName(null);
     setWarningActive(false);
+    setWarningPending(false);
     setWarningCountdown(null);
     setDefenseFailed(false);
     setCurrentSpell(null);
@@ -182,15 +189,15 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
   useEffect(() => { initStep('attack-basic'); }, [initStep]);
 
   // ─── 攻撃予告タイマー ────────────────────────────────
-  const startWarning = useCallback(() => {
+  const startWarning = useCallback((duration: number) => {
     if (warningIntervalRef.current) clearInterval(warningIntervalRef.current);
     setWarningActive(true);
-    setWarningCountdown(WARNING_DURATION / 1000);
+    setWarningCountdown(duration / 1000);
     warningStartRef.current = Date.now();
 
     warningIntervalRef.current = window.setInterval(() => {
       const elapsed = Date.now() - warningStartRef.current;
-      const remaining = Math.max(0, (WARNING_DURATION - elapsed) / 1000);
+      const remaining = Math.max(0, (duration - elapsed) / 1000);
       setWarningCountdown(remaining);
       if (remaining <= 0) {
         if (warningIntervalRef.current) { clearInterval(warningIntervalRef.current); warningIntervalRef.current = null; }
@@ -205,8 +212,24 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
   useEffect(() => {
     const cfg = step !== 'complete' ? STEP_CONFIG[step] : null;
     if (!cfg?.hasWarning || stepDone || defenseFailed) return;
-    startWarning();
-    return () => { if (warningIntervalRef.current) { clearInterval(warningIntervalRef.current); warningIntervalRef.current = null; } };
+
+    const delay = cfg.warningDelay ?? 0;
+    const duration = cfg.warningDuration ?? 6000;
+
+    if (delay > 0) {
+      setWarningPending(true);
+      const prepTimer = window.setTimeout(() => {
+        setWarningPending(false);
+        startWarning(duration);
+      }, delay);
+      return () => {
+        clearTimeout(prepTimer);
+        if (warningIntervalRef.current) { clearInterval(warningIntervalRef.current); warningIntervalRef.current = null; }
+      };
+    } else {
+      startWarning(duration);
+      return () => { if (warningIntervalRef.current) { clearInterval(warningIntervalRef.current); warningIntervalRef.current = null; } };
+    }
   }, [step, stepDone, defenseFailed, startWarning]);
 
   // 防御失敗 → 2秒後にリトライ
@@ -215,13 +238,18 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
     const timer = setTimeout(() => {
       if (step === 'complete') return;
       const cfg = STEP_CONFIG[step as Exclude<TutorialStep, 'complete'>];
-      setDefenseFailed(false);
-      setCurrentSpell(null);
-      setTypingState(null);
-      setInputBuffer('');
-      setCandidates(cfg.pool ?? []);
       setCurrentSegmentIndex(0);
       setCompletedSegments(0);
+      setInputBuffer('');
+      if (cfg.mode === 'direct' && cfg.spell) {
+        // direct モード: 呪文はそのまま、打鍵状態だけリセット
+        setTypingState(createTypingState(cfg.spell.segments[0]));
+      } else {
+        setCurrentSpell(null);
+        setTypingState(null);
+        setCandidates(cfg.pool ?? []);
+      }
+      setDefenseFailed(false); // → warning useEffect が再発火して準備フェーズに入る
     }, 2000);
     return () => clearTimeout(timer);
   }, [defenseFailed, stepDone, step]);
@@ -230,6 +258,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
   const onSpellComplete = useCallback((spell: Spell) => {
     if (warningIntervalRef.current) { clearInterval(warningIntervalRef.current); warningIntervalRef.current = null; }
     setWarningActive(false);
+    setWarningPending(false);
     setWarningCountdown(null);
     setCastingSpellName(`${spell.name}（${spell.nameReading}）`);
     setCastingAnimation(true);
@@ -257,7 +286,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
       if (e.repeat) return;
 
       if (e.key === 'Escape') { onSkip(); return; }
-      if (step === 'complete' || stepDone || defenseFailed) return;
+      if (step === 'complete' || stepDone || defenseFailed || warningPending) return;
 
       const cfg = step !== 'complete' ? STEP_CONFIG[step] : null;
       if (!cfg) return;
@@ -279,7 +308,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
       const key = e.key.toLowerCase();
       if (key.length !== 1 || !/[a-z-]/.test(key)) return;
 
-      // ===== Direct モード (STEP 1, 2) =====
+      // ===== Direct モード (STEP 1, 2, 3, 4) =====
       if (cfg.mode === 'direct') {
         if (!typingState || !currentSpell) return;
         const { result, state: newState } = processInput(typingState, key);
@@ -306,7 +335,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
         return;
       }
 
-      // ===== Candidate モード (STEP 3, 4, 5) =====
+      // ===== Candidate モード (STEP 5) =====
       if (!currentSpell) {
         // 候補絞り込み中
         const newBuffer = inputBuffer + key;
@@ -361,8 +390,8 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
 
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [step, stepDone, defenseFailed, typingState, currentSpell, currentSegmentIndex,
-      inputBuffer, onSpellComplete, onSkip]);
+  }, [step, stepDone, defenseFailed, warningPending, typingState, currentSpell,
+      currentSegmentIndex, inputBuffer, onSpellComplete, onSkip]);
 
   // ─── 魔法陣進捗 ──────────────────────────────────────
   const magicProgress = (() => {
@@ -401,14 +430,19 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
   const cfg = STEP_CONFIG[step];
   const isCandidateMode = cfg.mode === 'candidate';
   const inCandidateSelect = isCandidateMode && !currentSpell;
-  const allSpellsForList = [...attackSpells, ...defenseSpells];
+  const isDefenseStep = step === 'defense-seki' || step === 'defense-dankuu';
 
   return (
     <div className="relative min-h-screen bg-background select-none overflow-hidden">
 
-      {/* 攻撃予告フラッシュ */}
+      {/* 攻撃予告フラッシュ（カウントダウン中） */}
       {warningActive && (
         <div className="absolute inset-0 z-40 pointer-events-none border-2 border-timer-warning/40 animate-pulse" />
+      )}
+
+      {/* 準備フェーズ：背景をほんのり赤みに */}
+      {warningPending && (
+        <div className="absolute inset-0 z-40 pointer-events-none border border-destructive/20" />
       )}
 
       {/* 防御失敗オーバーレイ */}
@@ -443,10 +477,18 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
         <p className="font-mono-code text-xs text-muted-foreground/50 tracking-wider">
           {cfg.instruction}
         </p>
+
+        {/* 準備フェーズメッセージ */}
+        {warningPending && (
+          <p className="font-serif-jp text-sm tracking-[0.3em] text-timer-warning/80 mt-2 animate-pulse">
+            攻撃迫る — 備えよ
+          </p>
+        )}
+
         {/* 攻撃予告カウントダウン */}
         {warningActive && warningCountdown !== null && (
           <p className={`font-mono-code text-lg mt-2 font-bold tabular-nums ${
-            warningCountdown < 2 ? 'text-destructive animate-pulse' : 'text-timer-warning'
+            warningCountdown < 3 ? 'text-destructive animate-pulse' : 'text-timer-warning'
           }`}>
             {warningCountdown.toFixed(1)}
           </p>
@@ -455,7 +497,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
 
       {/* メインレイアウト */}
       <div className="flex min-h-screen">
-        {/* 候補リスト（左パネル）— 候補モードのステップのみ */}
+        {/* 候補リスト（左パネル）— STEP 5 のみ */}
         {isCandidateMode && (
           <div className="w-52 flex items-center overflow-y-auto pt-24">
             <BossSpellList
@@ -480,6 +522,15 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
 
           <div className="h-2" />
 
+          {/* 縛道ラベル（防御ステップのみ） */}
+          {isDefenseStep && currentSpell && (
+            <div className="flex items-center gap-2">
+              <span className="font-mono-code text-xs tracking-[0.3em] text-muted-foreground/60 border border-muted-foreground/30 px-2 py-0.5">
+                縛道 · 防御呪文
+              </span>
+            </div>
+          )}
+
           {/* 候補モード: 入力バッファ & 絞り込み表示 */}
           {inCandidateSelect && (
             <div className="flex flex-col items-center gap-4">
@@ -491,7 +542,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
                   ? <>{inputBuffer}<span className="animate-pulse opacity-60">_</span></>
                   : (
                     <span className="text-muted-foreground/30 text-base font-sans-jp tracking-normal">
-                      {cfg.hasWarning ? '縛道のローマ字を入力...' : '呪文のローマ字を入力...'}
+                      呪文のローマ字を入力...
                     </span>
                   )
                 }
@@ -538,7 +589,7 @@ const TutorialManager: React.FC<Props> = ({ onComplete, onSkip }) => {
             </div>
           )}
 
-          {/* 詠唱モード: SpellDisplay */}
+          {/* 詠唱モード / direct モード: SpellDisplay */}
           {currentSpell && typingState && (
             <SpellDisplay
               textJp={currentSpell.textJp}
